@@ -10,24 +10,43 @@ const UserSchema = new Schema({
     password: {type: String, required: true},
 })
 
-// const CourseSchema = new Schema({
-//     user: {
-//         type: ObjectId,
-//         ref: "User",
-//         required: true,
-//     },
-
-//     duration: {type: Number, required: true},
-//     name: {type: String, required: true},
-//     content: [
-//         {
-//             day: Number,
-//             topic: String,
-//             description: String,
-//         },
-//     ],
-// });
 
 
-export const UserModel = model("User", UserSchema)
-// export const CourseModel = model("Course", CourseSchema)
+const DaySchema = new Schema({
+    day: {type: Number},
+    title: String,
+    topics: [String],
+    objectives: [String],
+    resources: [String],
+
+
+    generated: {
+        content: String,
+        summary: String,
+    },
+
+    status: {
+        type: String,
+        enum: ["pending", "generated"],
+        default: "pending"
+    }
+});
+
+
+const CourseSchema = new Schema({
+    user: {
+        type: ObjectId,
+        ref: "User",
+        required: true,
+    },
+
+    duration: {type: String, required: true},
+    courseName: {type: String, required: true},
+
+    days: [DaySchema]
+});
+
+
+export const UserModel = model("User", UserSchema);
+export const CourseModel = model("Course", CourseSchema);
+export const DaysModel = model("Days", DaySchema);

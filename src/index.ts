@@ -4,9 +4,13 @@ import bcrypt, { hash } from "bcrypt";
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_API_KEY, JWT_SECRET, MONGO_URL } from "./config.js";
 import { signInSchema, signUpSchema } from "./types.js";
-import { UserModel } from "./db.js";
+import { CourseModel, DaysModel, UserModel } from "./db.js";
 import mongoose from "mongoose";
 import { Middleware } from "./middleware.js";
+import { object } from "zod";
+
+const Schema = mongoose.Schema;
+const ObjectId = Schema.ObjectId;
 
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -109,22 +113,24 @@ app.post("/signin", async (req, res) => {
 
 
 app.post("/generate-course", Middleware, async (req, res) => {
+    const userId = req.userId;
+
     const { courseName,duration } = req.body;
 
     const prompt = `
     You are an expert course creator and educator.
     Create a structured ${duration}-day learning plan for a beginner who wants to learn "${courseName}".
+    Return ONLY valid JSON, No explanation text.
     Return the response strictly in JSON format like this:
     {
       "courseName": "${courseName}",
-      "duration": ${duration},
+      "duration": ${duration} days,
       "days": [
         {
           "day": 1,
           "title": "",
           "topics": [],
           "objectives": [],
-          "activities": [],
           "resources": []
         }
       ]
@@ -132,27 +138,141 @@ app.post("/generate-course", Middleware, async (req, res) => {
   `;
     
     const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
+      model: "gemini-2.5-flash",
+      contents: prompt
     });
 
-    
-    if(!result.text){
-        res.json("Error generating response");
-        return;
+    let text = result.text;
+
+    if(!text){
+      res.json("Error generating response");
+      return;
     }
-    const finalRes = result.text.slice(7,-3);
+
+    text = text.replace(/```json|```/g,"").trim();
 
     try {
-        const jsonRes = JSON.parse(finalRes);
-        res.json(jsonRes);
+
+      const jsonRes = JSON.parse(text);
+
+      await CourseModel.create({
+        user: userId,
+        courseName: jsonRes.courseName,
+        duration: jsonRes.duration[0],
+        days: jsonRes.days
+      });
+
+      res.json({
+        jsonRes,
+        msg: "Done"
+      })
+
     }
+
     catch(e){
-        res.json(e);
+      console.error("Error: ", e);
+      res.status(500).json({
+        error: "Failed to generate course",
+      });
     }
 
 })
 
+
+app.post("/generate-course/:courseId/day/:dayNumber/generate", Middleware, async(req, res) => {
+  const { courseId, dayNumber } = req.params;
+
+  const course = await CourseModel.findById(courseId);
+
+  console.log(courseId);
+
+
+
+  if(!course){
+    res.json({
+      msg: "No such course exists"
+    })
+
+    return;
+  }
+
+
+  const dayData = course.days[parseInt(dayNumber) - 1];
+
+  console.log(dayData);
+  
+  if(!dayNumber){
+    return res.json({
+      msg: "Invalid day number"
+    })
+  }
+
+  let prompt = `
+    You are an expert educator and course designer.
+    Generate detailed content for Day {{day}} of a {{duration}}-day beginner course on "{{courseName}}".
+
+    ### Day Goal
+    Help the student understand and apply today's concepts clearly.
+
+    ### Today's Topics
+    {{topics}}
+
+    ### Learning Objectives
+    {{objectives}}
+
+    ### Provided Resources / Hints
+    {{resources}}
+
+    ### Output Format (STRICT JSON, no markdown, no extra text)
+    {
+      "title": "",
+      "explanation": "",
+      "summary": ""
+    }
+
+    ### Notes:
+    - Keep tone friendly & motivating.
+    - Use beginner-friendly language.
+    - If code is required, explain before showing code.
+`
+
+  prompt = prompt
+      .replace("{{day}}", dayNumber)
+      .replace("{{duration}}", course.duration)
+      .replace("{{courseName}}", course.courseName)
+      .replace("{{topics}}", dayData.topics.join(", "))
+      .replace("{{objectives}}", dayData.objectives.join(", "))
+      .replace("{{resources}}", dayData.resources.join(", "));
+
+
+
+  const result = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt
+  });
+
+
+  if(!result.text){
+    res.json({
+      msg: "Error generating content for the day"
+    })
+
+    return;
+  }
+
+
+  let resText = result.text.slice(7, -3);
+  const json = JSON.parse(resText);
+
+
+
+  console.log(json.explanation);
+
+  res.json({
+    json
+  })
+
+})
 
 
 async function main() {
