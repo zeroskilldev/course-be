@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "allowImportingTsExtensions": true,
     "module": "nodenext",
     "target": "esnext",
     "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
     "jsx": "react-jsx",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true
   }
 }

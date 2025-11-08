@@ -5,29 +5,29 @@ const ObjectId = Schema.ObjectId;
 
 
 const UserSchema = new Schema({
-    username: {type: String, required: true},
+    fullname: {type: String, required: true},
     email:    {type: String, unique: true, required: true},
-    password: {true: String, required: true},
+    password: {type: String, required: true},
 })
 
-const CourseSchema = new Schema({
-    user: {
-        type: ObjectId,
-        ref: "User",
-        required: true,
-    },
+// const CourseSchema = new Schema({
+//     user: {
+//         type: ObjectId,
+//         ref: "User",
+//         required: true,
+//     },
 
-    duration: {type: Number, required: true},
-    name: {type: String, required: true},
-    content: [
-        {
-            day: Number,
-            topic: String,
-            description: String,
-        },
-    ],
-});
+//     duration: {type: Number, required: true},
+//     name: {type: String, required: true},
+//     content: [
+//         {
+//             day: Number,
+//             topic: String,
+//             description: String,
+//         },
+//     ],
+// });
 
 
 export const UserModel = model("User", UserSchema)
-export const CourseModel = model("Course", CourseSchema)
+// export const CourseModel = model("Course", CourseSchema)

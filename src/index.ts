@@ -1,6 +1,12 @@
 import express from "express";
+import jwt from "jsonwebtoken";
+import bcrypt, { hash } from "bcrypt";
 import { GoogleGenAI } from "@google/genai";
-import { GEMINI_API_KEY } from "./config.ts";
+import { GEMINI_API_KEY, JWT_SECRET, MONGO_URL } from "./config.js";
+import { signInSchema, signUpSchema } from "./types.js";
+import { UserModel } from "./db.js";
+import mongoose from "mongoose";
+import { Middleware } from "./middleware.js";
 
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -10,32 +16,99 @@ app.use(express.json());
 
 
 
-// app.post("/signup", (req, res) => {
-//     try{
-//         const parsedData = signUpSchema.safeParse(req.body);
+app.post("/signup", async (req, res) => {
+  const parsedData = signUpSchema.safeParse(req.body);
 
-//         if(parsedData.success){
-//             // Storing user credentials in db
+  try {
 
-//         }
-//     }
-//     catch(e){
-//         console.log(e)
-//     }
-
-
+    if(parsedData.error){
+      res.json(parsedData.error);
+      return;
+    }
     
-// })
+    const hashedPass = await bcrypt.hash(parsedData.data.password, 10);
+
+    const user = await UserModel.findOne({
+      email: parsedData.data.email
+    })
+
+    if(user){
+      res.json({
+        msg: "User Already exists. Please signIn"
+      })
+      return;
+    }
+
+    await UserModel.create({
+      email: parsedData.data.email,
+      fullname: parsedData.data.fullName,
+      password: hashedPass
+    })
+
+    res.json({
+      msg: "Signed Up successfully"
+    })
+    
+  } catch (error) {
+    res.json({
+      msg : "Error signing up",
+      error: error
+    })
+  }
+    
+})
 
 
 
-// app.post("/signin", (req, res) => {
+app.post("/signin", async (req, res) => {
+  const parsedData = signInSchema.safeParse(req.body);
 
-// })
+  try{
+
+    if(parsedData.error){
+      res.json(parsedData.error)
+      return;
+    }
+
+    const user = await UserModel.findOne({
+      email: parsedData.data.email
+    })
+
+    if(!user){
+      res.json({
+        msg : "Please singup first"
+      })
+
+      return;
+    }
+    
+    const matched = await bcrypt.compare(parsedData.data.password, user.password);
+
+    if(!matched){
+      res.json({
+        msg: "Wrong Password"
+      })
+
+      return;
+    }
+
+    const token = jwt.sign({
+      userId : user._id
+    }, JWT_SECRET);
+
+    res.json({
+      token
+    })
+
+  } catch(e){
+    res.json(e);
+  }
+
+})
 
 
 
-app.post("/generate-course", async (req, res) => {
+app.post("/generate-course", Middleware, async (req, res) => {
     const { courseName,duration } = req.body;
 
     const prompt = `
@@ -80,8 +153,10 @@ app.post("/generate-course", async (req, res) => {
 
 })
 
+
+
 async function main() {
-    // await 
+    await mongoose.connect(MONGO_URL);
 
     app.listen(3000, () => {
         console.log("Running on port 3000")
