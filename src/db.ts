@@ -8,6 +8,12 @@ const UserSchema = new Schema({
     fullname: {type: String, required: true},
     email:    {type: String, unique: true, required: true},
     password: {type: String, required: true},
+    courses: [
+        {
+            type: ObjectId,
+            ref: "Course"
+        }
+    ]
 })
 
 
@@ -18,7 +24,6 @@ const DaySchema = new Schema({
     topics: [String],
     objectives: [String],
     resources: [String],
-
 
     generated: {
         content: String,
@@ -49,4 +54,3 @@ const CourseSchema = new Schema({
 
 export const UserModel = model("User", UserSchema);
 export const CourseModel = model("Course", CourseSchema);
-export const DaysModel = model("Days", DaySchema);

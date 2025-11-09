@@ -1,16 +1,13 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import bcrypt, { hash } from "bcrypt";
+import bcrypt from "bcrypt";
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_API_KEY, JWT_SECRET, MONGO_URL } from "./config.js";
 import { signInSchema, signUpSchema } from "./types.js";
-import { CourseModel, DaysModel, UserModel } from "./db.js";
+import { CourseModel, UserModel } from "./db.js";
 import mongoose from "mongoose";
 import { Middleware } from "./middleware.js";
-import { object } from "zod";
 
-const Schema = mongoose.Schema;
-const ObjectId = Schema.ObjectId;
 
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -111,6 +108,24 @@ app.post("/signin", async (req, res) => {
 })
 
 
+app.get("/dashboard", Middleware, async(req, res) => {
+  const userId = req.userId;
+
+  const user = await UserModel.findById(userId);
+
+  if(!user){
+    return res.json({
+      msg : "No such user exist"
+    })
+  }
+
+  // return the fullname email and the number of courses from here
+  
+  res.json({
+    user
+  })
+})
+
 
 app.post("/generate-course", Middleware, async (req, res) => {
     const userId = req.userId;
@@ -155,12 +170,26 @@ app.post("/generate-course", Middleware, async (req, res) => {
 
       const jsonRes = JSON.parse(text);
 
-      await CourseModel.create({
+      const user = await UserModel.findById(userId);
+
+
+      if(!user){
+        return res.json({
+          msg : "No such user exist"
+        })
+      }
+
+
+      const course = await CourseModel.create({
         user: userId,
         courseName: jsonRes.courseName,
         duration: jsonRes.duration[0],
         days: jsonRes.days
       });
+
+
+      user.courses.push(course._id);
+      await user.save();
 
       res.json({
         jsonRes,
@@ -184,9 +213,6 @@ app.post("/generate-course/:courseId/day/:dayNumber/generate", Middleware, async
 
   const course = await CourseModel.findById(courseId);
 
-  console.log(courseId);
-
-
 
   if(!course){
     res.json({
@@ -196,16 +222,23 @@ app.post("/generate-course/:courseId/day/:dayNumber/generate", Middleware, async
     return;
   }
 
+  const dayIndex = parseInt(dayNumber) - 1;
+  const dayData = course.days[dayIndex];
 
-  const dayData = course.days[parseInt(dayNumber) - 1];
-
-  console.log(dayData);
-  
   if(!dayNumber){
     return res.json({
       msg: "Invalid day number"
     })
   }
+
+
+  // Will return the content if its already generated
+  if(course.days[dayIndex].status === "generated"){
+    console.log(course.days[dayIndex].generated);
+
+    return res.json(course.days[dayIndex].generated)
+  }
+  
 
   let prompt = `
     You are an expert educator and course designer.
@@ -234,6 +267,7 @@ app.post("/generate-course/:courseId/day/:dayNumber/generate", Middleware, async
     - Keep tone friendly & motivating.
     - Use beginner-friendly language.
     - If code is required, explain before showing code.
+    - Explain in the most simple terms so that a beginner can also understand.
 `
 
   prompt = prompt
@@ -261,15 +295,27 @@ app.post("/generate-course/:courseId/day/:dayNumber/generate", Middleware, async
   }
 
 
-  let resText = result.text.slice(7, -3);
-  const json = JSON.parse(resText);
+  let resText = result.text;
+  const cleanText = resText.replace(/```json|```/g, "").trim();
 
-
+  const json = JSON.parse(cleanText);
 
   console.log(json.explanation);
 
+
+  course.days[dayIndex].generated = {
+    content: json.explanation,
+    summary: json.summary
+  }
+
+  course.days[dayIndex].status = "generated";
+  course.markModified("days");
+
+  // embedding days in courseSchema instead of saving in daysSchema separately
+  await course.save();
+
   res.json({
-    json
+    msg: "Course generated and saved successfully"
   })
 
 })
